@@ -1,0 +1,33 @@
+name: Release
+
+# Push a tag like v1.0.0 to build isthisconnected.exe and publish it as a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test -short ./...
+
+      - name: Build
+        run: go build -trimpath -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum isthisconnected.exe > isthisconnected.exe.sha256
+          gh release create "$GITHUB_REF_NAME" isthisconnected.exe isthisconnected.exe.sha256 \
+            --title "IsThisConnected $GITHUB_REF_NAME" --generate-notes

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IsThisConnected</title>
+<link rel="stylesheet" href="uPlot.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span id="dot" class="dot"></span><strong>IsThisConnected</strong><span id="status" class="status">—</span></div>
+  <dl class="now" id="now"></dl>
+  <div class="actions">
+    <button id="btnTest" type="button">Speed test</button>
+    <button id="btnPause" type="button">Pause</button>
+    <a id="btnCsv" class="btn" href="#">Export CSV</a>
+    <button id="btnSettings" type="button" aria-expanded="false" aria-controls="settings" title="Detection thresholds">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      Settings <span id="cfgBadge" class="count" hidden></span></button>
+  </div>
+</header>
+
+<section id="settings" class="settings" hidden aria-label="Detection thresholds">
+  <div class="settings-head">
+    <h2>Detection thresholds</h2>
+    <p class="muted small">An incident opens when a value stays beyond its threshold. Rows in red opened incidents in the selected time range
+      (see the time selector below): if their "Your values" are normal for you, the threshold is too strict and those are false alarms.
+      Changes apply immediately to new incidents and are saved in config.json.</p>
+  </div>
+  <form id="cfgForm">
+    <div class="table-wrap">
+      <table class="cfg">
+        <thead><tr><th>Setting</th><th>Threshold</th><th>Good connection</th><th>Your values (selected range)</th><th>Incidents opened</th></tr></thead>
+        <tbody id="cfgRows"></tbody>
+      </table>
+    </div>
+    <div class="cfg-actions"><button type="submit">Save</button><button type="button" id="cfgClose">Close</button><span id="cfgMsg" class="muted"></span></div>
+  </form>
+</section>
+
+<section class="chain-wrap" aria-label="Connection path, live">
+  <ol class="chain" id="chain"></ol>
+  <p class="chain-verdict" id="verdict"></p>
+  <p class="muted small">Each link is tested separately, from your PC outwards. A problem affects every link after the one where it starts,
+    so <strong>the first red link from the left is where the problem is</strong>.</p>
+</section>
+
+<nav class="toolbar" aria-label="Time range">
+  <div class="presets" id="presets">
+    <button data-span="900000">15 min</button>
+    <button data-span="3600000">1 h</button>
+    <button data-span="21600000">6 h</button>
+    <button data-span="86400000">24 h</button>
+    <button data-span="604800000">7 d</button>
+    <button data-span="2592000000">30 d</button>
+  </div>
+  <form id="rangeForm" class="custom">
+    <label>From <input type="datetime-local" id="from" step="60"></label>
+    <label>To <input type="datetime-local" id="to" step="60"></label>
+    <button type="submit">Go</button>
+  </form>
+  <button id="btnLive" class="live" type="button">● Live</button>
+  <label class="toggle"><input type="checkbox" id="overlay"> Overlay all</label>
+  <span id="rangeInfo" class="muted"></span>
+</nav>
+<p class="hint muted">Drag on a chart to zoom · ← → or Shift+wheel to move in time · Ctrl+wheel to zoom · click a legend item to show/hide a series</p>
+
+<main>
+  <section id="charts" class="charts"></section>
+
+  <section class="card">
+    <div class="inc-head">
+      <h2>Incidents <span id="incCount" class="muted"></span></h2>
+      <div class="filters">
+        <label>Type <select id="fType"><option value="">all</option><option value="disconnessione">Disconnection</option><option value="rallentamento">Slowdown</option></select></label>
+        <label>Where <select id="fWhere"><option value="">everywhere</option></select></label>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="incTable">
+        <thead><tr>
+          <th data-k="start">Start</th><th data-k="dur">Duration</th><th data-k="type">Type</th>
+          <th data-k="where">Where</th><th data-k="label">What happened</th><th data-k="trigger">Detected by</th><th data-k="peak">Peak</th><th data-k="reason">Windows reason</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="incEmpty" class="muted empty" hidden>No incidents in the selected time range.</p>
+    </div>
+    <div id="detail" class="detail" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>Access points <span id="sessCount" class="muted"></span></h2>
+    <p class="muted small">Every connection of this PC to an access point (newest first), how the router answered during it, and what happened next.
+      If one access point has many more WiFi problems or a slower router ping than the others, it is the likely culprit; if they all behave the same,
+      look at the router or further out. Many short connections with frequent switches mean the PC sits between two access points with similar signal
+      (ping-pong roaming). Click a row to see it on the charts.</p>
+    <p id="apSummary" class="ap-summary"></p>
+    <div class="table-wrap">
+      <table id="sessTable">
+        <thead><tr><th>Connected</th><th>Until</th><th>Duration</th><th>Network</th><th>Access point</th>
+          <th>Ping to router<br><span class="muted">typical · slowest 5%</span></th><th>WiFi incidents</th><th>Then</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="sessEmpty" class="muted empty" hidden>No WiFi data in the selected time range yet.</p>
+    </div>
+  </section>
+</main>
+<script src="uPlot.iife.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

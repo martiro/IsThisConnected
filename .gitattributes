@@ -1,0 +1,5 @@
+# Go source must stay LF everywhere (gofmt check in CI runs on Windows)
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.exe binary

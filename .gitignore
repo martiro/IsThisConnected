@@ -1,0 +1,14 @@
+# Build output
+*.exe
+*.exe~
+*.test
+
+# Runtime data (normally in %LOCALAPPDATA%\IsThisConnected, never in the repo)
+*.db
+*.db-wal
+*.db-shm
+logs/
+
+# Editors
+.vscode/
+.idea/
