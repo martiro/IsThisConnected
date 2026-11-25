@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v1.0.0 to build isthisconnected.exe and publish it as a GitHub Release.
+# Push a tag like v1.1.0 to build all executables and publish them as a GitHub Release.
 on:
   push:
     tags: ["v*"]
@@ -9,8 +9,31 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            out: isthisconnected.exe
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            out: isthisconnected-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            out: isthisconnected-linux-arm64
+          - os: macos-latest # Apple Silicon runner; the Intel build is cross-compiled with clang -arch
+            goos: darwin
+            goarch: arm64
+            out: isthisconnected-macos-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            out: isthisconnected-macos-amd64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,16 +41,40 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
+        if: matrix.goarch == 'amd64' || matrix.goos == 'darwin'
         run: go test -short ./...
 
       - name: Build
-        run: go build -trimpath -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.goos == 'darwin' && '1' || '0' }} # macOS needs cgo (CoreWLAN, tray)
+        run: |
+          flags="-s -w"
+          if [ "$GOOS" = windows ]; then flags="-H windowsgui $flags"; fi
+          go build -trimpath -ldflags "$flags" -o "${{ matrix.out }}" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: ${{ matrix.out }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish release
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sha256sum isthisconnected.exe > isthisconnected.exe.sha256
-          gh release create "$GITHUB_REF_NAME" isthisconnected.exe isthisconnected.exe.sha256 \
-            --title "IsThisConnected $GITHUB_REF_NAME" --generate-notes
+          cd dist
+          sha256sum * > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" \
+            --title "IsThisConnected $GITHUB_REF_NAME" --generate-notes \
+            --notes "**Windows** is the tested platform. **Linux and macOS builds are experimental**: they compile and pass the automated tests on GitHub's machines but have not been tried on a real WiFi connection yet. Feedback is very welcome, see [Help wanted](https://github.com/$GITHUB_REPOSITORY#help-wanted-linux-and-macos-testers)."

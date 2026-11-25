@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"runtime"
 	"time"
 
 	"fyne.io/systray"
@@ -19,7 +20,7 @@ var trayColors = map[string]color.RGBA{
 	"paused": {0x8a, 0x8f, 0x98, 0xff},
 }
 
-// dotIcon renders a 32x32 WiFi-like icon (filled circle with arcs cut out) and wraps the PNG in an ICO container.
+// dotIcon renders a 32x32 WiFi-like icon (filled circle with arcs cut out) and, on Windows, wraps the PNG in an ICO container.
 func dotIcon(c color.RGBA) []byte {
 	const n = 32
 	img := image.NewRGBA(image.Rect(0, 0, n, n))
@@ -40,6 +41,9 @@ func dotIcon(c color.RGBA) []byte {
 	}
 	var p bytes.Buffer
 	png.Encode(&p, img)
+	if runtime.GOOS != "windows" { // the tray takes PNG on Linux and macOS, ICO on Windows
+		return p.Bytes()
+	}
 	var ico bytes.Buffer
 	binary.Write(&ico, binary.LittleEndian, []uint16{0, 1, 1})                 // ICONDIR: reserved, type=icon, count
 	ico.Write([]byte{n, n, 0, 0})                                              // width, height, colors, reserved
@@ -55,6 +59,9 @@ func abs(v float64) float64 {
 	}
 	return v
 }
+
+// The tray must run on the main OS thread (required on macOS, harmless elsewhere).
+func init() { runtime.LockOSThread() }
 
 func runTray(a *App) {
 	icons := map[string][]byte{}

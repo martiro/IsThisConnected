@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -10,7 +9,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,9 +29,16 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # -short skips the native test: hosted runners have no WiFi adapter and block ICMP.
+      # -short skips TestNativeAPIs (needs a WiFi adapter). TestPlatformBasics still runs the native
+      # calls that work on a CI machine: loopback ping, CPU time, default route, adapter counters.
       - name: Test
-        run: go test -short ./...
+        run: go test -short -v ./...
 
       - name: Build
-        run: go build -trimpath -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            go build -trimpath -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
+          else
+            go build -trimpath -ldflags "-s -w" -o isthisconnected .
+          fi

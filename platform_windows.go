@@ -1,6 +1,6 @@
 package main
 
-// Native Windows calls: ICMP, routing, interface counters, WLAN, single instance, hidden exec.
+// Native Windows calls: ICMP, routing, interface counters, WLAN, CPU, single instance, hidden exec.
 
 import (
 	"encoding/binary"
@@ -105,8 +105,6 @@ func bestRoute(dst net.IP) (gw net.IP, ifIndex uint32, err error) {
 	return u32ip(row[3]), row[4], nil
 }
 
-const ifTypeIEEE80211 = 71
-
 // ifEntry reads 64-bit in/out byte counters and the interface type via GetIfEntry2 (MIB_IF_ROW2, 1352 bytes).
 func ifEntry(ifIndex uint32) (in, out uint64, ifType uint32, err error) {
 	var row [169]uint64 // 1352 bytes, 8-aligned
@@ -120,22 +118,6 @@ func ifEntry(ifIndex uint32) (in, out uint64, ifType uint32, err error) {
 }
 
 // ---------- WLAN ----------
-
-type WifiInfo struct {
-	Present   bool    `json:"present"`
-	Connected bool    `json:"connected"`
-	State     int     `json:"state"`
-	SSID      string  `json:"ssid"`
-	BSSID     string  `json:"bssid"`
-	RSSI      float64 `json:"rssi"`
-	Quality   float64 `json:"quality"`
-	RxMbps    float64 `json:"rx_mbps"`
-	TxMbps    float64 `json:"tx_mbps"`
-	Channel   int     `json:"channel"`
-	Band      string  `json:"band"`
-	Phy       string  `json:"phy"`
-	Iface     string  `json:"iface"`
-}
 
 type wlan struct {
 	h               uintptr

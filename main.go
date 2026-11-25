@@ -1,4 +1,4 @@
-// IsThisConnected: lightweight background monitor of WiFi/Internet quality for Windows.
+// IsThisConnected: lightweight background monitor of WiFi/Internet quality (Windows; Linux and macOS experimental).
 // (Say it out loud: "is disconnected".)
 package main
 
@@ -7,16 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-
-	"golang.org/x/sys/windows/registry"
 )
-
-const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 
 const appName = "IsThisConnected"
 
 func dataDir() string {
-	base := os.Getenv("LOCALAPPDATA")
+	base := appDataBase()
 	d := filepath.Join(base, appName)
 	migrateOldData(filepath.Join(base, "WiFiMon"), d)
 	os.MkdirAll(filepath.Join(d, "logs"), 0o755)
@@ -51,31 +47,6 @@ func setupLog(dir string) {
 	}
 }
 
-// Autostart via HKCU Run key: per-user, needs no admin (a logon scheduled task would).
-func installAutostart() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	k, _, err := registry.CreateKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
-	if err != nil {
-		return err
-	}
-	defer k.Close()
-	k.DeleteValue("WiFiMon") // entry of the former name, if any
-	return k.SetStringValue(appName, `"`+exe+`"`)
-}
-
-func uninstallAutostart() error {
-	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
-	if err != nil {
-		return err
-	}
-	defer k.Close()
-	k.DeleteValue("WiFiMon") // former name
-	return k.DeleteValue(appName)
-}
-
 func main() {
 	cmd := ""
 	if len(os.Args) > 1 {
@@ -101,7 +72,7 @@ func main() {
 		return
 	case "", "run":
 	default:
-		msgBox("Usage: isthisconnected.exe [install | uninstall | open]")
+		msgBox("Usage: isthisconnected [install | uninstall | open]")
 		return
 	}
 	if !singleInstance() {
@@ -123,7 +94,7 @@ func main() {
 	app := newApp(cfg, store)
 	app.start()
 	go app.serve()
-	runTray(app) // blocks until "Esci"
+	runTray(app) // blocks until "Quit"
 	app.stop()
 	log.Printf("stopped")
 }

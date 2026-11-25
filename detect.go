@@ -265,7 +265,7 @@ func (in *Incident) describe() {
 	switch {
 	case in.Reason == "":
 		in.Why = "The WiFi adapter lost the connection. Windows did not log a reason (yet)."
-	case strings.Contains(r, "user") || strings.Contains(r, "temporary-disconnect") || strings.Contains(r, "power"):
+	case strings.Contains(r, "user") || strings.Contains(r, "this pc") || strings.Contains(r, "temporary-disconnect") || strings.Contains(r, "power"):
 		in.Where = "Your PC (Windows)"
 		in.Why = fmt.Sprintf("Windows itself closed the connection (%q), e.g. sleep, standby or a manual disconnect. Not a network fault.", in.Reason)
 	case strings.Contains(r, "access point") || strings.Contains(r, "not visible"):
