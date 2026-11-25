@@ -248,6 +248,8 @@ go build -ldflags "-s -w" -o isthisconnected .                      # Linux, mac
 Every push is checked by GitHub Actions on Windows, Linux and macOS: gofmt, `go vet`, `govulncheck`, tests and build.
 Pushing a tag such as `v1.2.0` builds all the executables, checks that the Windows and Linux ones are reproducible,
 signs their provenance and publishes them as a release (see [Verifying downloads](#verifying-downloads)).
+To try the release workflow without publishing anything, run it by hand: *Actions → Release → Run workflow*
+(builds and checks everything, then stops before signing and publishing).
 
 The dashboard (HTML/JS/CSS plus [uPlot](https://github.com/leeoniya/uPlot)) is embedded in the
 executable: no CDN and no internet access are needed to view it.
