@@ -78,9 +78,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Outside the checkout: Go stamps "vcs.modified=true" into a binary built next to untracked files,
+      # which would make the rebuild below differ from the release builds.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          path: dist
+          path: ${{ runner.temp }}/dist
           merge-multiple: true
 
       # Rebuild here, on a different machine (Linux instead of Windows for the .exe), and require
@@ -88,12 +90,14 @@ jobs:
       # macOS builds go through Apple's C toolchain (cgo) and are not checked.
       - name: Check that the builds are reproducible
         run: |
-          mkdir rebuild
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o rebuild/isthisconnected.exe .
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o rebuild/isthisconnected-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o rebuild/isthisconnected-linux-arm64 .
-          for f in rebuild/*; do
-            cmp "$f" "dist/$(basename "$f")" || { echo "::error::$(basename "$f") is not reproducible"; exit 1; }
+          test -z "$(git status --porcelain)" || { echo "::error::the checkout is not clean"; git status --porcelain; exit 1; }
+          out="$RUNNER_TEMP/rebuild"
+          mkdir "$out"
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o "$out/isthisconnected.exe" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "$out/isthisconnected-linux-amd64" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "$out/isthisconnected-linux-arm64" .
+          for f in "$out"/*; do
+            cmp "$f" "$RUNNER_TEMP/dist/$(basename "$f")" || { echo "::error::$(basename "$f") is not reproducible"; exit 1; }
             echo "reproducible: $(basename "$f")"
           done
 
@@ -101,13 +105,13 @@ jobs:
       # Verify with: gh attestation verify <file> --repo martiro/IsThisConnected
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/isthisconnected*
+          subject-path: ${{ runner.temp }}/dist/isthisconnected*
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd dist
+          cd "$RUNNER_TEMP/dist"
           sha256sum * > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" \
             --title "IsThisConnected $GITHUB_REF_NAME" --generate-notes \
