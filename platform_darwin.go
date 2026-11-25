@@ -2,7 +2,8 @@ package main
 
 // macOS native layer (experimental): CoreWLAN for WiFi, Mach host statistics for CPU, getifaddrs for the
 // adapter counters, the routing socket for the default gateway. Needs cgo (the tray needs it too).
-// Since macOS 14 the network name and BSSID are only returned to apps the user allowed to use Location.
+// Since macOS 14 the network name and BSSID are only returned to apps the user allowed to use Location;
+// a bare executable (not an .app bundle) cannot ask for it, so expect them to be hidden.
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc
@@ -174,7 +175,7 @@ func (w *wlan) info() (WifiInfo, error) {
 	wi.State = 1
 	wi.SSID, wi.BSSID = C.GoString(&c.ssid[0]), C.GoString(&c.bssid[0])
 	if wi.SSID == "" {
-		wi.SSID = "(hidden: allow Location access)"
+		wi.SSID = "(hidden by macOS)" // macOS 14+ hides it from apps without Location permission
 	}
 	wi.RSSI = float64(c.rssi)
 	wi.Quality = qualityOf(wi.RSSI)
