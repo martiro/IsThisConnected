@@ -133,7 +133,8 @@ executable cannot ask for it. Everything else works, but the access point compar
 ³ Read from the system journal (`CTRL-EVENT-DISCONNECTED` lines), which your user must be allowed to read:
 true for the first user on most desktops. Not available with iwd.
 ⁴ KDE, Xfce, Cinnamon and others have one; on GNOME install the *AppIndicator and KStatusNotifierItem* extension.
-The dashboard works either way.
+The icon is drawn for a dark panel (the common default), because there is no standard way to ask the desktop
+for its panel color. The dashboard works either way.
 
 > [!WARNING]
 > **Linux and macOS support is experimental and has not been tested on a real WiFi connection yet.**
@@ -185,9 +186,9 @@ You don't have to trust the release files: you can check them. These three check
    gh attestation verify isthisconnected.exe --repo martiro/IsThisConnected
    ```
 3. **Rebuild it yourself** (Windows and Linux builds): they are reproducible, so compiling the same tag with the Go
-   version from `go.mod` gives a byte-identical file. Compare the two hashes:
+   version from `go.mod` gives a byte-identical file. Use the tag of the release you downloaded, then compare the two hashes:
    ```
-   git clone --branch v1.1.0 https://github.com/martiro/IsThisConnected.git
+   git clone --branch v1.1.0 https://github.com/martiro/IsThisConnected.git   # the release tag to check
    cd IsThisConnected
    export GOTOOLCHAIN=go1.27.4 CGO_ENABLED=0                    # PowerShell: $env:GOTOOLCHAIN="go1.27.4"; $env:CGO_ENABLED="0"
    GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
@@ -244,8 +245,9 @@ go build -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .    # Windows
 go build -ldflags "-s -w" -o isthisconnected .                      # Linux, macOS
 ```
 
-Every push is checked by GitHub Actions on Windows, Linux and macOS: gofmt, `go vet`, tests and build.
-Pushing a tag such as `v1.1.0` builds all the executables and publishes them as a release.
+Every push is checked by GitHub Actions on Windows, Linux and macOS: gofmt, `go vet`, `govulncheck`, tests and build.
+Pushing a tag such as `v1.2.0` builds all the executables, checks that the Windows and Linux ones are reproducible,
+signs their provenance and publishes them as a release (see [Verifying downloads](#verifying-downloads)).
 
 The dashboard (HTML/JS/CSS plus [uPlot](https://github.com/leeoniya/uPlot)) is embedded in the
 executable: no CDN and no internet access are needed to view it.
@@ -265,6 +267,7 @@ executable: no CDN and no internet access are needed to view it.
 | `logo.go`, `assets/logo.json` | The logo, drawn at any size for the tray: the question mark takes the status color |
 | `assets/icon.png`, `rsrc_windows_amd64.syso` | Windows executable icon. Regenerate after changing the PNG: `go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest none --icon assets/icon.png` |
 | `web/` | Dashboard |
+| `.github/` | CI and release workflows (actions pinned by commit hash), Dependabot |
 
 ## Limitations
 
