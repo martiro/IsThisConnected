@@ -35,10 +35,14 @@ jobs:
             out: isthisconnected-macos-amd64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Allow unprivileged ping (Linux runner)
+        if: matrix.goos == 'linux'
+        run: sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
 
       - name: Test
         if: matrix.goarch == 'amd64' || matrix.goos == 'darwin'

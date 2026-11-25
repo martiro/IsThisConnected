@@ -187,6 +187,7 @@ type App struct {
 	lastTickAt atomic.Int64
 	quietUntil int64 // after resume from sleep: no detection (detectTick goroutine only)
 	lastTick   Tick  // guarded by detMu, shown live as the hop chain
+	icmpWarn   sync.Once
 }
 
 func newApp(cfg Config, store *Store) *App {
@@ -382,7 +383,10 @@ func (a *App) sampleCPU() func() {
 func (a *App) pinger(name string, target func() net.IP) {
 	c, err := newICMP()
 	if err != nil {
-		log.Printf("ICMP unavailable: %v", err)
+		a.icmpWarn.Do(func() { // without ping nothing works: say so once, with the fix
+			a.event("icmp_unavailable", err.Error())
+			toast(appName+": ping not permitted", err.Error())
+		})
 		return
 	}
 	var win []float64

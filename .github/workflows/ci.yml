@@ -15,8 +15,8 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -33,7 +33,10 @@ jobs:
       # calls that work on a CI machine: loopback ping, CPU time, default route, adapter counters.
       - name: Ping permission (Linux)
         if: runner.os == 'Linux'
-        run: echo "::notice title=ping_group_range::$(cat /proc/sys/net/ipv4/ping_group_range)"
+        # GitHub's Linux machines disable unprivileged ping; desktop distributions enable it by default.
+        run: |
+          echo "::notice title=ping_group_range (runner default)::$(cat /proc/sys/net/ipv4/ping_group_range)"
+          sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
 
       # Failing test lines are also published as annotations, so they show in the run summary.
       - name: Test
