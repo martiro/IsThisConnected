@@ -135,7 +135,7 @@ The dashboard works either way.
 ## Getting started
 
 1. Download the file for your system from the [latest release](https://github.com/martiro/IsThisConnected/releases/latest).
-   It is built from this source by GitHub Actions, and `SHA256SUMS` lets you verify it. You can also [build it yourself](#building-from-source).
+   It is built from this source by GitHub Actions and can be [verified](#verifying-downloads). You can also [build it yourself](#building-from-source).
 
    | System | File |
    |---|---|
@@ -158,6 +158,37 @@ isthisconnected open         open the dashboard
 
 Running it a second time just opens the dashboard: only one instance runs.
 No administrator or root rights are needed for anything.
+
+## Verifying downloads
+
+You don't have to trust the release files: you can check them. These three checks go from quickest to strongest:
+
+1. **Checksum**: the file was not altered after it was published. Compare its SHA-256 with the line in `SHA256SUMS`:
+   ```
+   Get-FileHash isthisconnected.exe                 # Windows (PowerShell)
+   sha256sum -c SHA256SUMS --ignore-missing         # Linux
+   shasum -a 256 -c SHA256SUMS --ignore-missing     # macOS
+   ```
+2. **Build provenance**: the file was built by this repository's release workflow from a specific commit, not
+   uploaded by hand. Every file has an attestation signed through [Sigstore](https://www.sigstore.dev/) and recorded
+   in its public transparency log. Verify it with the [GitHub CLI](https://cli.github.com/), available for releases from v1.2.0 on:
+   ```
+   gh attestation verify isthisconnected.exe --repo martiro/IsThisConnected
+   ```
+3. **Rebuild it yourself** (Windows and Linux builds): they are reproducible, so compiling the same tag with the Go
+   version from `go.mod` gives a byte-identical file. Compare the two hashes:
+   ```
+   git clone --branch v1.1.0 https://github.com/martiro/IsThisConnected.git
+   cd IsThisConnected
+   export GOTOOLCHAIN=go1.27.4 CGO_ENABLED=0                    # PowerShell: $env:GOTOOLCHAIN="go1.27.4"; $env:CGO_ENABLED="0"
+   GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
+   GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o isthisconnected-linux-amd64 .
+   ```
+   The release workflow does the same on every release, rebuilding on a different operating system, and fails
+   if a file is not identical. macOS builds go through Apple's C compiler and are not reproducible.
+
+These checks prove that a file contains exactly the public source code and nothing else. What that code does
+is open for anyone to read. Security problems can be reported privately: see [SECURITY.md](SECURITY.md).
 
 ## Configuration
 

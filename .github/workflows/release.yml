@@ -1,12 +1,13 @@
 name: Release
 
-# Push a tag like v1.1.0 to build all executables and publish them as a GitHub Release.
+# Push a tag like v1.2.0 to build all executables, check that they are reproducible, sign their
+# provenance and publish them as a GitHub Release.
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -35,8 +36,8 @@ jobs:
             out: isthisconnected-macos-amd64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
@@ -59,7 +60,7 @@ jobs:
           if [ "$GOOS" = windows ]; then flags="-H windowsgui $flags"; fi
           go build -trimpath -ldflags "$flags" -o "${{ matrix.out }}" .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.out }}
           path: ${{ matrix.out }}
@@ -67,11 +68,40 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the release
+      id-token: write     # sign the attestations (Sigstore)
+      attestations: write # store them on GitHub
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
+
+      # Rebuild here, on a different machine (Linux instead of Windows for the .exe), and require
+      # byte-identical results: proof that the executables contain exactly this source code.
+      # macOS builds go through Apple's C toolchain (cgo) and are not checked.
+      - name: Check that the builds are reproducible
+        run: |
+          mkdir rebuild
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o rebuild/isthisconnected.exe .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o rebuild/isthisconnected-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o rebuild/isthisconnected-linux-arm64 .
+          for f in rebuild/*; do
+            cmp "$f" "dist/$(basename "$f")" || { echo "::error::$(basename "$f") is not reproducible"; exit 1; }
+            echo "reproducible: $(basename "$f")"
+          done
+
+      # Signed SLSA build provenance: links each file to this repository, commit and workflow run.
+      # Verify with: gh attestation verify <file> --repo martiro/IsThisConnected
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/isthisconnected*
 
       - name: Publish release
         env:
@@ -81,4 +111,6 @@ jobs:
           sha256sum * > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" \
             --title "IsThisConnected $GITHUB_REF_NAME" --generate-notes \
-            --notes "**Windows** is the tested platform. **Linux and macOS builds are experimental**: they compile and pass the automated tests on GitHub's machines but have not been tried on a real WiFi connection yet. Feedback is very welcome, see [Help wanted](https://github.com/$GITHUB_REPOSITORY#help-wanted-linux-and-macos-testers)."
+            --notes "**Windows** is the tested platform. **Linux and macOS builds are experimental**: they compile and pass the automated tests on GitHub's machines but have not been tried on a real WiFi connection yet. Feedback is very welcome, see [Help wanted](https://github.com/$GITHUB_REPOSITORY#help-wanted-linux-and-macos-testers).
+
+          Every file has a signed build provenance attestation and the Windows and Linux builds are reproducible: see [Verifying downloads](https://github.com/$GITHUB_REPOSITORY#verifying-downloads)."

@@ -15,8 +15,9 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      # Actions are pinned to a commit hash (not a movable tag); Dependabot proposes updates.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
@@ -28,6 +29,10 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      # Known vulnerabilities in our code paths, the dependencies and the Go standard library.
+      - name: Vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
       # -short skips TestNativeAPIs (needs a WiFi adapter). TestPlatformBasics still runs the native
       # calls that work on a CI machine: loopback ping, CPU time, default route, adapter counters.
