@@ -1,75 +1,19 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"runtime"
 	"time"
 
 	"fyne.io/systray"
 )
 
-var trayColors = map[string]color.RGBA{
-	"ok":     {0x22, 0xa0, 0x55, 0xff},
-	"slow":   {0xe8, 0xa3, 0x17, 0xff},
-	"down":   {0xd9, 0x3b, 0x3b, 0xff},
-	"paused": {0x8a, 0x8f, 0x98, 0xff},
-}
-
-// dotIcon renders a 32x32 WiFi-like icon (filled circle with arcs cut out) and, on Windows, wraps the PNG in an ICO container.
-func dotIcon(c color.RGBA) []byte {
-	const n = 32
-	img := image.NewRGBA(image.Rect(0, 0, n, n))
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			dx, dy := float64(x)-15.5, float64(y)-15.5
-			d := dx*dx + dy*dy
-			if d <= 15*15 {
-				img.Set(x, y, c)
-				if d >= 6.5*6.5 && d <= 9*9 && dy < -0.5 && dy < -abs(dx)*0.6 { // white arc for contrast
-					img.Set(x, y, color.White)
-				}
-				if d <= 3*3 && dy < 3 {
-					img.Set(x, y, color.White)
-				}
-			}
-		}
-	}
-	var p bytes.Buffer
-	png.Encode(&p, img)
-	if runtime.GOOS != "windows" { // the tray takes PNG on Linux and macOS, ICO on Windows
-		return p.Bytes()
-	}
-	var ico bytes.Buffer
-	binary.Write(&ico, binary.LittleEndian, []uint16{0, 1, 1})                 // ICONDIR: reserved, type=icon, count
-	ico.Write([]byte{n, n, 0, 0})                                              // width, height, colors, reserved
-	binary.Write(&ico, binary.LittleEndian, []uint16{1, 32})                   // planes, bpp
-	binary.Write(&ico, binary.LittleEndian, []uint32{uint32(p.Len()), 6 + 16}) // size, offset
-	ico.Write(p.Bytes())
-	return ico.Bytes()
-}
-
-func abs(v float64) float64 {
-	if v < 0 {
-		return -v
-	}
-	return v
-}
-
 // The tray must run on the main OS thread (required on macOS, harmless elsewhere).
 func init() { runtime.LockOSThread() }
 
 func runTray(a *App) {
-	icons := map[string][]byte{}
-	for k, c := range trayColors {
-		icons[k] = dotIcon(c)
-	}
 	systray.Run(func() {
-		systray.SetIcon(icons["ok"])
+		systray.SetIcon(trayIcon("ok", lightBar()))
 		systray.SetTitle(appName)
 		systray.SetTooltip(appName)
 		mOpen := systray.AddMenuItem("Open dashboard", "")
@@ -82,9 +26,9 @@ func runTray(a *App) {
 		last := ""
 		refresh := func() {
 			s := a.status()
-			if s != last {
-				systray.SetIcon(icons[s])
-				last = s
+			if key := fmt.Sprint(s, lightBar()); key != last { // status changed, or the user switched light/dark theme
+				systray.SetIcon(trayIcon(s, lightBar()))
+				last = key
 			}
 			if a.paused.Load() {
 				mPause.SetTitle("Resume monitoring")

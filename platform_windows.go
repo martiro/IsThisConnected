@@ -11,7 +11,19 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
+
+// lightBar reports whether the taskbar uses the light theme (Settings > Personalization > Colors).
+func lightBar() bool {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, registry.QUERY_VALUE)
+	if err != nil {
+		return false // default Windows 11 taskbar is dark
+	}
+	defer k.Close()
+	v, _, err := k.GetIntegerValue("SystemUsesLightTheme")
+	return err == nil && v == 1
+}
 
 var (
 	iphlpapi          = windows.NewLazySystemDLL("iphlpapi.dll")

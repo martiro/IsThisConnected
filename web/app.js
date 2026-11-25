@@ -433,7 +433,25 @@ $("#cfgForm").addEventListener("submit", async (e) => {
 function connectLive() {
   const es = new EventSource("/api/live");
   es.onmessage = (m) => renderNow(JSON.parse(m.data));
-  es.onerror = () => { $("#status").textContent = "IsThisConnected is not reachable"; $("#dot").className = "dot"; };
+  es.onerror = () => { $("#status").textContent = "IsThisConnected is not reachable"; showStatus("unreachable"); };
+}
+
+// The logo's question mark shows the status, in the header and in the browser tab (favicon).
+let faviconKey = "";
+function showStatus(status) {
+  $("#logo").setAttribute("class", "logo " + status);
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  if (status + dark === faviconKey) return;
+  faviconKey = status + dark;
+  const ink = dark ? "#e6e8eb" : "#1b1f24";
+  const q = { slow: css("--slow"), down: css("--down"), paused: css("--paused"), unreachable: css("--paused") }[status] || ink;
+  const icon = $("#logo").cloneNode(true); // standalone copy with explicit colors: a favicon has no page CSS
+  icon.removeAttribute("id");
+  icon.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  icon.querySelectorAll(".ink").forEach((p) => p.setAttribute("stroke", ink));
+  icon.querySelectorAll(".q").forEach((p) => p.setAttribute("stroke", q));
+  icon.querySelector(".ink-dot").setAttribute("fill", ink);
+  $("#favicon").href = "data:image/svg+xml," + encodeURIComponent(new XMLSerializer().serializeToString(icon));
 }
 
 // chain: one node per link, from the PC outwards. state: ok | warn | bad | off
@@ -467,7 +485,7 @@ function renderNow(s) {
   S.viol = s.violations || {}; S.linkMedian = s.link_median || 0;
   if (!$("#settings").hidden) updateCfgInfo();
   const label = { ok: "Connection OK", slow: "Slowdown in progress", down: "Disconnection in progress", paused: "Monitoring paused" }[s.status];
-  $("#dot").className = "dot " + s.status;
+  showStatus(s.status);
   $("#status").textContent = label;
   $("#btnPause").textContent = s.status === "paused" ? "Resume" : "Pause";
   $("#btnTest").disabled = s.speedtest_running;

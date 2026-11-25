@@ -79,6 +79,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -189,6 +190,24 @@ func (w *wlan) info() (WifiInfo, error) {
 // ---------- not available on macOS (no public API) ----------
 
 func isMetered() (metered, ok bool) { return false, false }
+
+var (
+	barMu    sync.Mutex
+	barLight bool
+	barAt    time.Time
+)
+
+// lightBar reports whether the menu bar is light (no AppleInterfaceStyle = light mode). Cached for a minute:
+// it runs a process and the tray asks every few seconds.
+func lightBar() bool {
+	barMu.Lock()
+	defer barMu.Unlock()
+	if time.Since(barAt) > time.Minute {
+		out, err := exec.Command("defaults", "read", "-g", "AppleInterfaceStyle").Output()
+		barLight, barAt = err != nil || !strings.Contains(string(out), "Dark"), time.Now()
+	}
+	return barLight
+}
 
 func lastDisconnectReason(maxAge time.Duration) (code int, reason string, found bool) {
 	return 0, "", false

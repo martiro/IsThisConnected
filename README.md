@@ -1,6 +1,13 @@
-# IsThisConnected
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo.svg" alt="IsThisConnected logo: WiFi waves whose innermost wave turns into a red question mark" width="150">
+  </picture>
+</p>
 
-*Say it out loud: "is disconnected". The question you ask when the network acts up, and the tool that answers it.*
+<h1 align="center">IsThisConnected</h1>
+
+<p align="center"><em>Say it out loud: "is disconnected". The question you ask when the network acts up, and the tool that answers it.</em></p>
 
 [![CI](https://github.com/martiro/IsThisConnected/actions/workflows/ci.yml/badge.svg)](https://github.com/martiro/IsThisConnected/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/martiro/IsThisConnected)](https://github.com/martiro/IsThisConnected/releases/latest)
@@ -82,7 +89,9 @@ drivers. It is only used to confirm a slow router.
   - how many incidents it opened.
 
   It also tells *false alarms* (threshold stricter than a healthy connection) apart from *real problems*.
-- **Tray icon**: green / yellow / red / grey for OK / slowdown / disconnection / paused, a tooltip with the current values, and an optional desktop notification when an incident starts.
+- **Tray icon and browser tab**: the question mark in the logo shows the status. It matches the waves when all is
+  well, turns amber on a slowdown, red on a disconnection and grey while paused. Hover the tray icon for the current values;
+  an optional desktop notification appears when an incident starts.
 - **Metered connections**: detects metered networks and skips the automatic download test on them.
 - **Light enough to forget**: about 30–45 MB of RAM (the upper end right after browsing long ranges in the dashboard) and about 0.5% of one CPU core, measured on the author's laptop.
 
@@ -253,6 +262,8 @@ executable: no CDN and no internet access are needed to view it.
 | `store.go` | SQLite storage, aggregation, retention, access point sessions |
 | `server.go` | Local HTTP API and live stream (server-sent events) |
 | `tray.go`, `main.go` | Tray icon, autostart, single instance |
+| `logo.go`, `assets/logo.json` | The logo, drawn at any size for the tray: the question mark takes the status color |
+| `assets/icon.png`, `rsrc_windows_amd64.syso` | Windows executable icon. Regenerate after changing the PNG: `go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest none --icon assets/icon.png` |
 | `web/` | Dashboard |
 
 ## Limitations

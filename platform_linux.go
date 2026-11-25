@@ -115,6 +115,9 @@ func (w *wlan) info() (WifiInfo, error) {
 // ---------- metered, disconnect reason, notifications ----------
 
 // isMetered asks NetworkManager. Metered: 1 yes, 2 no, 3 guess yes, 4 guess no, 0 unknown.
+// lightBar: shortcut: assumes a dark panel (GNOME, KDE and most themes); there is no portable way to ask.
+func lightBar() bool { return false }
+
 func isMetered() (metered, ok bool) {
 	conn, err := dbus.ConnectSystemBus()
 	if err != nil {
