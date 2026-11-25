@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// Sanity checks of the hand-computed Windows struct offsets against the real machine.
+// Self-check of the native layer on a real machine with WiFi (skipped by -short). On Linux and macOS,
+// its output is what we ask testers to send: see "Help wanted" in the README.
 func TestNativeAPIs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("native")

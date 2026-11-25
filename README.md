@@ -4,16 +4,18 @@
 
 [![CI](https://github.com/martiro/IsThisConnected/actions/workflows/ci.yml/badge.svg)](https://github.com/martiro/IsThisConnected/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/martiro/IsThisConnected)](https://github.com/martiro/IsThisConnected/releases/latest)
-![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)
+![Platforms: Windows, Linux and macOS (experimental)](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%26%20macOS%20(experimental)-0078D6)
 ![Go](https://img.shields.io/badge/Go-1.27-00ADD8)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-**A lightweight, always-on WiFi and Internet monitor for Windows that tells you *where* a problem is:
+**A lightweight, always-on WiFi and Internet monitor that tells you *where* a problem is:
 your PC, the WiFi signal, the access point, the router, your ISP, or the Internet beyond it.**
 
-One small `.exe` sits in the system tray, measures your connection every second, keeps the history,
+One small executable sits in the system tray, measures your connection every second, keeps the history,
 and automatically records every slowdown and disconnection together with the metric that caught it,
 the likely cause, and a plain-English explanation.
+
+Built and tested on **Windows 10/11**. **Linux and macOS builds are experimental**: see [Platforms](#platforms).
 
 ![IsThisConnected dashboard](docs/screenshots/dashboard.png)
 
@@ -39,7 +41,7 @@ The dashboard shows this chain live, and every incident is labelled with *where*
 
 | Where | What IsThisConnected saw |
 |---|---|
-| **Your PC** | CPU saturated for 10 s+ while the network got slow, or Windows itself dropped the WiFi (sleep, standby) |
+| **Your PC** | CPU saturated for 10 s+ while the network got slow, or the operating system itself dropped the WiFi (sleep, standby) |
 | **WiFi signal** | The router answered slowly *and* the signal dropped by 10 dB or more |
 | **WiFi link** | Negotiated link speed collapsed, or the PC was switching access point |
 | **Access point / router** | The router answered slowly while the signal was stable: congestion or interference |
@@ -65,7 +67,7 @@ drivers. It is only used to confirm a slow router.
   - type (slowdown or disconnection) and duration;
   - the metric that triggered it and its peak value;
   - where the problem was, with an explanation;
-  - the disconnect reason that Windows logged;
+  - the disconnect reason logged by the operating system (Windows; Linux with wpa_supplicant);
   - a snapshot of all metrics at that moment.
 - **History you can browse**:
   - per-second data for 7 days, per-minute averages for a year;
@@ -80,7 +82,7 @@ drivers. It is only used to confirm a slow router.
   - how many incidents it opened.
 
   It also tells *false alarms* (threshold stricter than a healthy connection) apart from *real problems*.
-- **Tray icon**: green / yellow / red / grey for OK / slowdown / disconnection / paused, a tooltip with the current values, and an optional Windows notification when an incident starts.
+- **Tray icon**: green / yellow / red / grey for OK / slowdown / disconnection / paused, a tooltip with the current values, and an optional desktop notification when an incident starts.
 - **Metered connections**: detects metered networks and skips the automatic download test on them.
 - **Light enough to forget**: about 30–45 MB of RAM (the upper end right after browsing long ranges in the dashboard) and about 0.5% of one CPU core, measured on the author's laptop.
 
@@ -96,33 +98,81 @@ drivers. It is only used to confirm a slow router.
 
 ![Settings panel](docs/screenshots/settings.png)
 
+## Platforms
+
+| Feature | Windows 10/11 | Linux | macOS |
+|---|:---:|:---:|:---:|
+| **Status** | ✅ tested on real hardware | 🧪 experimental | 🧪 experimental |
+| Builds and passes the automated tests on GitHub's machines | ✅ | ✅ | ✅ |
+| Ping, packet loss, jitter (router, Internet) | ✅ | ✅ ¹ | ✅ |
+| ISP first hop (light traceroute) | ✅ | ✅ ¹ | ⚠️ may not be found |
+| DNS and TCP timing, download test | ✅ | ✅ | ✅ |
+| Adapter traffic, CPU load | ✅ | ✅ | ✅ |
+| WiFi signal, link speed, channel, band | ✅ | ✅ (nl80211) | ✅ (CoreWLAN, transmit rate only) |
+| Network name and access point (BSSID): AP comparison, roaming | ✅ | ✅ | ❌ hidden by macOS ² |
+| Why the WiFi dropped (OS disconnect reason) | ✅ | ⚠️ with wpa_supplicant ³ | ❌ |
+| Metered connection detection | ✅ | ✅ (NetworkManager) | ❌ |
+| Tray icon | ✅ | ⚠️ needs a StatusNotifier/AppIndicator tray ⁴ | ✅ |
+| Desktop notifications | ✅ | ✅ | ✅ |
+| Start at sign-in | ✅ | ✅ (XDG autostart) | ✅ (LaunchAgent) |
+
+¹ Uses unprivileged "ping sockets", allowed when `net.ipv4.ping_group_range` includes your group: the default on most
+current systemd-based distributions. If it is not, IsThisConnected tells you, and
+`sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` enables it.
+² Since macOS 14 the network name and BSSID are only given to apps the user allowed to use Location, and a plain
+executable cannot ask for it. Everything else works, but the access point comparison and roaming detection don't.
+³ Read from the system journal (`CTRL-EVENT-DISCONNECTED` lines), which your user must be allowed to read:
+true for the first user on most desktops. Not available with iwd.
+⁴ KDE, Xfce, Cinnamon and others have one; on GNOME install the *AppIndicator and KStatusNotifierItem* extension.
+The dashboard works either way.
+
+> [!WARNING]
+> **Linux and macOS support is experimental and has not been tested on a real WiFi connection yet.**
+> It compiles and passes the automated tests on GitHub's Linux and macOS machines, which run the native
+> calls they can (ping, routing, adapter counters, CPU) but have no WiFi adapter. If you try it, please
+> [tell us how it went](#help-wanted-linux-and-macos-testers): every report helps, and contributions are very welcome.
+
 ## Getting started
 
-1. Download `isthisconnected.exe` from the [latest release](https://github.com/martiro/IsThisConnected/releases/latest). It is built from this source by GitHub Actions, and a `.sha256` file is published next to it. You can also [build it yourself](#building-from-source).
+1. Download the file for your system from the [latest release](https://github.com/martiro/IsThisConnected/releases/latest).
+   It is built from this source by GitHub Actions, and `SHA256SUMS` lets you verify it. You can also [build it yourself](#building-from-source).
+
+   | System | File |
+   |---|---|
+   | Windows 10/11 | `isthisconnected.exe` |
+   | Linux (x86-64 / ARM64) | `isthisconnected-linux-amd64` / `isthisconnected-linux-arm64` |
+   | macOS (Apple Silicon / Intel) | `isthisconnected-macos-arm64` / `isthisconnected-macos-amd64` |
+
 2. Run it. An icon appears in the tray and the dashboard opens at <http://127.0.0.1:8777>.
+   - **Linux**: `chmod +x isthisconnected-linux-amd64 && ./isthisconnected-linux-amd64`
+   - **macOS**: the build is not signed by Apple, so remove the download quarantine first:
+     `xattr -d com.apple.quarantine isthisconnected-macos-arm64 && chmod +x isthisconnected-macos-arm64`
 3. Optional: start it automatically when you sign in.
 
 ```
-isthisconnected.exe              start (tray icon + dashboard)
-isthisconnected.exe install      start automatically at sign-in (per-user, no admin rights needed)
-isthisconnected.exe uninstall    remove automatic start
-isthisconnected.exe open         open the dashboard
+isthisconnected              start (tray icon + dashboard)
+isthisconnected install      start automatically at sign-in (per-user, no admin rights needed)
+isthisconnected uninstall    remove automatic start
+isthisconnected open         open the dashboard
 ```
 
 Running it a second time just opens the dashboard: only one instance runs.
-No administrator rights are needed for anything.
+No administrator or root rights are needed for anything.
 
 ## Configuration
 
-Use the **⚙ Settings** button in the dashboard. Changes apply immediately and are saved to
-`%LOCALAPPDATA%\IsThisConnected\config.json`. That file also holds the options that need a restart:
+Use the **⚙ Settings** button in the dashboard. Changes apply immediately and are saved to `config.json`
+in the data folder (see below). That file also holds the options that need a restart:
 - the Internet test targets;
 - the speed test URL and interval;
 - notifications on/off.
 
 ## Data and privacy
 
-- Everything stays on your PC, in `%LOCALAPPDATA%\IsThisConnected\`: a SQLite database, the config and the logs. There is no account, no telemetry and no cloud.
+- Everything stays on your computer, in a SQLite database with the config and the logs. There is no account, no telemetry and no cloud.
+  - Windows: `%LOCALAPPDATA%\IsThisConnected\`
+  - Linux: `~/.local/share/IsThisConnected/` (or `$XDG_DATA_HOME`)
+  - macOS: `~/Library/Application Support/IsThisConnected/`
 - The dashboard listens on `127.0.0.1` only and rejects requests for any other host name, which guards against DNS rebinding.
 - Network traffic IsThisConnected generates:
   - ICMP pings to your router, your ISP's first hop, `8.8.8.8` and `1.1.1.1`;
@@ -133,12 +183,14 @@ Use the **⚙ Settings** button in the dashboard. Changes apply immediately and 
 
 ## Building from source
 
-Requirements: Go 1.27 or newer, Windows. No CGO and no C compiler.
+Requirements: Go 1.27 or newer. Windows and Linux need no C compiler. macOS needs the Xcode command line tools
+(`xcode-select --install`), because CoreWLAN and the tray are reached through cgo.
 
-Install straight from GitHub. The `-H windowsgui` flag keeps a console window from opening:
+Install straight from GitHub:
 
 ```
-go install -ldflags "-H windowsgui" github.com/martiro/IsThisConnected@latest
+go install -ldflags "-H windowsgui" github.com/martiro/IsThisConnected@latest   # Windows: no console window
+go install github.com/martiro/IsThisConnected@latest                            # Linux, macOS
 ```
 
 Or clone and build:
@@ -146,22 +198,25 @@ Or clone and build:
 ```
 git clone https://github.com/martiro/IsThisConnected.git
 cd IsThisConnected
-go test -short ./...                              # logic tests (no Windows APIs)
-go test ./...                                     # also checks the native Windows calls on this machine
-go build -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .
+go test -short ./...                              # logic tests + basic native calls (no WiFi needed)
+go test ./...                                     # also checks WiFi, metered flag and disconnect reason on this machine
+go build -ldflags "-H windowsgui -s -w" -o isthisconnected.exe .    # Windows
+go build -ldflags "-s -w" -o isthisconnected .                      # Linux, macOS
 ```
 
-Every push is checked by GitHub Actions: gofmt, `go vet`, tests and build. Pushing a tag such as
-`v1.0.0` builds the executable and publishes it as a release.
+Every push is checked by GitHub Actions on Windows, Linux and macOS: gofmt, `go vet`, tests and build.
+Pushing a tag such as `v1.1.0` builds all the executables and publishes them as a release.
 
 The dashboard (HTML/JS/CSS plus [uPlot](https://github.com/leeoniya/uPlot)) is embedded in the
 executable: no CDN and no internet access are needed to view it.
 
 | File | What it does |
 |---|---|
-| `win.go` | Native calls: ICMP with TTL (ping and traceroute), routing, adapter counters, WLAN API, CPU time |
-| `metered.go` | Metered-connection check (`INetworkCostManager`, COM) |
-| `eventlog.go` | WLAN disconnect reasons from the Windows event log, toast notifications |
+| `platform.go` | What each platform provides, shared helpers |
+| `platform_windows.go`, `metered_windows.go`, `eventlog*.go`, `autostart_windows.go` | Windows: ICMP with TTL, routing, adapter counters, WLAN API, CPU, metered flag (COM), event log, toasts, Run key |
+| `platform_linux.go`, `icmp_linux.go` | Linux: /proc and /sys, nl80211, NetworkManager, journal, notifications, XDG autostart |
+| `platform_darwin.go`, `icmp_darwin.go` | macOS: CoreWLAN, routing socket, getifaddrs, Mach CPU stats, LaunchAgent |
+| `icmp_unix.go`, `platform_unix.go`, `native_parse.go` | Linux and macOS: ping sockets, single instance, pure parsers (tested on every OS) |
 | `detect.go` | Pure logic: statistics, hysteresis, diagnosis, "where" explanations |
 | `monitor.go`, `app.go` | Collectors and the once-a-second evaluation |
 | `store.go` | SQLite storage, aggregation, retention, access point sessions |
@@ -171,10 +226,29 @@ executable: no CDN and no internet access are needed to view it.
 
 ## Limitations
 
-- Windows 10/11 only, IPv4 only.
+- IPv4 only. Linux and macOS: see [Platforms](#platforms) for what is missing.
 - Telling the access point from the router relies on comparing access points. With a single access point (typical at home, where the router *is* the access point), IsThisConnected tells you so and suggests using a cable for a while to settle it.
 - Many ISP routers answer ping with low priority, so the ISP link refines a diagnosis but never opens an incident on its own.
 - The disconnect reason "disconnected by the driver" doesn't say whether the adapter or the access point gave up. IsThisConnected reports it as "WiFi adapter or access point".
+
+## Help wanted: Linux and macOS testers
+
+The Linux and macOS versions have only run on GitHub's build machines, which have no WiFi. If you have a
+Linux or macOS laptop, you can help a lot in two minutes:
+
+1. Run the self-check (needs [Go](https://go.dev/dl/); on macOS also `xcode-select --install`):
+   ```
+   git clone https://github.com/martiro/IsThisConnected.git
+   cd IsThisConnected
+   go test -v -run 'TestNativeAPIs|TestPlatformBasics' ./...
+   ```
+2. [Open an issue](https://github.com/martiro/IsThisConnected/issues/new) with the output, your distribution or
+   macOS version, and your WiFi adapter if you know it. Feel free to hide your network name and BSSIDs.
+3. Even better, leave it running for a while and tell us whether the dashboard values (signal, link speed,
+   router and ISP ping) and the incident explanations look right.
+
+Pull requests are welcome, from small fixes to a proper macOS app bundle, which would bring back the
+network name and BSSID.
 
 ## License
 
