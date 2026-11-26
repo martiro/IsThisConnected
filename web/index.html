@@ -107,6 +107,26 @@
       <p id="sessEmpty" class="muted empty" hidden>No WiFi data in the selected time range yet.</p>
     </div>
   </section>
+
+  <section class="card" id="nearby">
+    <h2>Nearby access points <span id="nbCount" class="muted"></span></h2>
+    <p class="muted small">Every access point this PC can hear, from a WiFi scan every <span id="nbEvery">60 s</span>.
+      <strong>Channels now</strong>: each curve is one access point; its height is the signal strength, its width the channel width.
+      Curves that overlap share the same airtime and slow each other down: a channel with fewer, weaker curves is a better choice for your router.
+      <strong>Signal over time</strong>: a stable access point moves only a few dB. Large swings or gaps mean it is far away, behind walls,
+      or changes its power or channel. Use the buttons in the table to show or hide an access point on the chart.</p>
+    <div class="nb-bands" id="nbBands" role="group" aria-label="WiFi band"></div>
+    <div class="nb-nets" id="nbNets" role="group" aria-label="Networks to show"></div>
+    <p id="nbMsg" class="nb-msg" hidden></p>
+    <div class="panel"><h3>Channels now (dBm, higher is stronger)</h3><canvas id="nbSpectrum" role="img" aria-label="Signal of each nearby access point by channel"></canvas></div>
+    <div class="panel"><h3>Signal over time (dBm, higher is stronger)</h3><div id="nbChart"></div></div>
+    <div class="table-wrap">
+      <table id="nbTable">
+        <thead><tr><th>Access point</th><th>Channel</th><th>Now</th><th>Typical</th><th>Weakest – strongest</th><th>Variation</th><th>Heard</th><th>Stability</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
 </main>
 <script src="uPlot.iife.min.js"></script>
 <script src="app.js"></script>

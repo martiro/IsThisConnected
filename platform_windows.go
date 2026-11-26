@@ -41,6 +41,7 @@ var (
 	procWlanQuery   = wlanapi.NewProc("WlanQueryInterface")
 	procWlanFreeMem = wlanapi.NewProc("WlanFreeMemory")
 	procWlanBssList = wlanapi.NewProc("WlanGetNetworkBssList")
+	procWlanScan    = wlanapi.NewProc("WlanScan")
 )
 
 func ip4u32(ip net.IP) uint32 { return binary.LittleEndian.Uint32(ip.To4()) } // network byte order in memory
@@ -134,6 +135,8 @@ func ifEntry(ifIndex uint32) (in, out uint64, ifType uint32, err error) {
 type wlan struct {
 	h               uintptr
 	bandBSSID, band string
+	guid            *windows.GUID     // interface picked by info(), used by scan
+	heard           map[string]uint64 // BSSID -> host timestamp of its last beacon, to skip stale cached entries
 }
 
 func openWlan() (*wlan, error) {
@@ -191,6 +194,7 @@ func (w *wlan) info() (WifiInfo, error) {
 	}
 	it := raw[pick*532 : (pick+1)*532]
 	guid := *(*windows.GUID)(unsafe.Pointer(&it[0]))
+	w.guid = &guid
 	wi := WifiInfo{Present: true, State: int(binary.LittleEndian.Uint32(it[528:])), Iface: utf16z(it[16:528])}
 	if wi.State != wlanStateConnected {
 		return wi, nil
@@ -250,6 +254,54 @@ func (w *wlan) bandOf(guid *windows.GUID, bssid []byte) string {
 		}
 	}
 	return ""
+}
+
+// triggerScan asks the driver for a fresh scan (asynchronous, done in 2-4 s). While connected the radio leaves
+// the channel for a moment, so the ping to the router can show a short spike.
+func (w *wlan) triggerScan() {
+	if w.guid != nil {
+		procWlanScan.Call(w.h, uintptr(unsafe.Pointer(w.guid)), 0, 0, 0)
+	}
+}
+
+// scan returns the access points heard again since the previous call (the driver keeps unheard ones cached for a while).
+func (w *wlan) scan() ([]BSS, error) {
+	if w.guid == nil {
+		return nil, nil
+	}
+	var list unsafe.Pointer
+	r, _, _ := procWlanBssList.Call(w.h, uintptr(unsafe.Pointer(w.guid)), 0, 3 /*dot11_BSS_type_any*/, 0, 0, uintptr(unsafe.Pointer(&list)))
+	if r != 0 {
+		return nil, syscall.Errno(r) // 5 = access denied: Windows 11 wants location access for desktop apps
+	}
+	defer procWlanFreeMem.Call(uintptr(list))
+	n := int(*(*uint32)(unsafe.Add(list, 4)))
+	heard, best := map[string]uint64{}, map[string]BSS{}
+	for i := 0; i < n; i++ {
+		p := unsafe.Add(list, 8+i*360) // WLAN_BSS_ENTRY, 360 bytes
+		e := unsafe.Slice((*byte)(p), 360)
+		bssid := net.HardwareAddr(e[40:46]).String()
+		host := binary.LittleEndian.Uint64(e[80:]) // ullHostTimestamp
+		prev, seen := w.heard[bssid]
+		heard[bssid] = host
+		if seen && host != 0 && host == prev {
+			continue
+		}
+		f := int(binary.LittleEndian.Uint32(e[92:]) / 1000) // kHz -> MHz
+		ies := unsafe.Slice((*byte)(unsafe.Add(p, binary.LittleEndian.Uint32(e[352:]))), binary.LittleEndian.Uint32(e[356:]))
+		b := BSS{BSSID: bssid, SSID: string(e[4 : 4+min(binary.LittleEndian.Uint32(e[0:]), 32)]),
+			RSSI: float64(int32(binary.LittleEndian.Uint32(e[56:]))), Channel: channelOfMHz(f), Band: bandOfMHz(f)}
+		b.CenterMHz, b.WidthMHz = chanWidth(ies, f)
+		if old, ok := best[bssid]; !ok || b.RSSI > old.RSSI { // one entry per PHY type: keep the strongest
+			best[bssid] = b
+		}
+	}
+	w.heard = heard
+	out := make([]BSS, 0, len(best))
+	for _, b := range best {
+		out = append(out, b)
+	}
+	return out, nil
 }
 
 func utf16z(b []byte) string {

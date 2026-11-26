@@ -82,6 +82,7 @@ drivers. It is only used to confirm a slow router.
   - synchronised charts with incidents drawn as coloured bands;
   - CSV export.
 - **Access point comparison**: every connection to every access point with date and time, how long it lasted, the router ping during it, the WiFi incidents, and where the PC went next. It reveals a bad access point, or *ping-pong roaming* between two of them.
+- **Nearby access points** (Windows): a WiFi scan every 60 s lists every access point the PC can hear. A channel view per band (2.4 / 5 / 6 GHz) draws each one as a curve as wide as its channel (20 to 160 MHz) and as high as its signal, so crowded channels stand out. A chart shows each signal over time, and a table rates its stability over the selected range: typical signal, weakest to strongest, variation (± dB), and how often it was heard.
 - **Threshold tuning that shows its effect**: the ⚙ Settings panel shows, for each threshold:
   - the range of a good connection;
   - your own typical values;
@@ -206,7 +207,8 @@ Use the **⚙ Settings** button in the dashboard. Changes apply immediately and 
 in the data folder (see below). That file also holds the options that need a restart:
 - the Internet test targets;
 - the speed test URL and interval;
-- notifications on/off.
+- notifications on/off;
+- `scan_interval_sec` (default 60): how often to scan nearby access points. While connected, each scan takes the radio off its channel for a moment, so the router ping can show a short spike. Set it to `0` to record only the scans Windows does by itself.
 
 ## Data and privacy
 
@@ -273,6 +275,7 @@ executable: no CDN and no internet access are needed to view it.
 
 ## Limitations
 
+- The nearby access point scan is Windows only. On Windows 11 it needs *Settings › Privacy & security › Location › Let desktop apps access your location*; the dashboard says so when Windows blocks it.
 - IPv4 only. Linux and macOS: see [Platforms](#platforms) for what is missing.
 - Telling the access point from the router relies on comparing access points. With a single access point (typical at home, where the router *is* the access point), IsThisConnected tells you so and suggests using a cable for a while to settle it.
 - Many ISP routers answer ping with low priority, so the ISP link refines a diagnosis but never opens an incident on its own.

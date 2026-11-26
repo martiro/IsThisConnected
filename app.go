@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,7 @@ type Config struct {
 	Notify          bool     `json:"notify"`
 	InternetTargets []string `json:"internet_targets"`
 	TCPTarget       string   `json:"tcp_target"`
+	ScanSec         int      `json:"scan_interval_sec"` // nearby AP scan; 0 = no forced scans, record what Windows hears by itself
 }
 
 func defaultConfig() Config {
@@ -44,7 +46,7 @@ func defaultConfig() Config {
 		RSSIDropDB: 10, LinkRatePct: 50, DownloadPct: 40, PCCPUPct: 90, OpenAfterSec: 5, CloseAfterSec: 15,
 		SpeedtestMin: 15, SpeedtestURL: "https://speed.cloudflare.com/__down?bytes=10000000",
 		DNSTestDomain: "example.com", Notify: true,
-		InternetTargets: []string{"8.8.8.8", "1.1.1.1"}, TCPTarget: "1.1.1.1:443",
+		InternetTargets: []string{"8.8.8.8", "1.1.1.1"}, TCPTarget: "1.1.1.1:443", ScanSec: 60,
 	}
 }
 
@@ -134,6 +136,8 @@ type State struct {
 	gwTimeouts   int
 	roamAt       int64
 	rssiWin      []float64
+	Scan         map[string]ScanAP // BSSID -> last time heard in a scan
+	ScanErr      string
 	cpuWin       []float64 // last 10 s of CPU %
 }
 
@@ -459,7 +463,11 @@ func (a *App) startThroughput() {
 func (a *App) startWifi() {
 	var w *wlan
 	var prev WifiInfo
-	tries := 0
+	tries, tick := 0, 0
+	scanTicks := max(a.cfg.ScanSec, 10) / 2 // 2 s ticks between scans
+	if a.cfg.ScanSec == 0 {
+		scanTicks = 30
+	}
 	a.every(2*time.Second, func() {
 		if w == nil {
 			if tries++; tries%30 != 1 { // retry opening every minute (e.g. WLAN service started later)
@@ -508,7 +516,46 @@ func (a *App) startWifi() {
 			a.event("channel", fmt.Sprintf("%d → %d (%s)", prev.Channel, wi.Channel, wi.Band))
 		}
 		prev = wi
+		switch tick++; tick % scanTicks { // same goroutine as info(): the wlan handle is not shared
+		case 1:
+			if a.cfg.ScanSec > 0 {
+				w.triggerScan()
+			}
+		case 4: // 6 s later: a full scan takes 2-4 s
+			aps, err := w.scan()
+			a.recordScan(aps, err)
+		}
 	})
+}
+
+type ScanAP struct {
+	BSS
+	Seen int64 `json:"seen"`
+}
+
+// recordScan keeps the APs for the spectrum view and stores each one's RSSI as scan/<band>/<bssid>/<ssid>.
+func (a *App) recordScan(aps []BSS, err error) {
+	t := now()
+	a.st.mu.Lock()
+	a.st.ScanErr = ""
+	if err != nil {
+		a.st.ScanErr = err.Error()
+	}
+	if a.st.Scan == nil {
+		a.st.Scan = map[string]ScanAP{}
+	}
+	for k, x := range a.st.Scan {
+		if t-x.Seen > 10*60000 {
+			delete(a.st.Scan, k)
+		}
+	}
+	for _, b := range aps {
+		a.st.Scan[b.BSSID] = ScanAP{b, t}
+	}
+	a.st.mu.Unlock()
+	for _, b := range aps {
+		a.store.Add("scan/"+strings.TrimSuffix(b.Band, " GHz")+"/"+b.BSSID+"/"+b.SSID, t, b.RSSI)
+	}
 }
 
 // fetchReason waits for WLAN AutoConfig to write the event, then attaches the reason to the incident.

@@ -246,3 +246,7 @@ func installAutostart() error {
 }
 
 func uninstallAutostart() error { return os.Remove(launchAgentFile()) }
+
+// shortcut: no AP scan on macOS (CoreWLAN scanning needs location permission); add scanForNetworks if asked.
+func (w *wlan) triggerScan()         {}
+func (w *wlan) scan() ([]BSS, error) { return nil, nil }
