@@ -183,3 +183,7 @@ func installAutostart() error {
 }
 
 func uninstallAutostart() error { return os.Remove(autostartFile()) }
+
+// shortcut: no AP scan on Linux (triggering an nl80211 scan needs CAP_NET_ADMIN); read the cached BSS dump if asked.
+func (w *wlan) triggerScan()         {}
+func (w *wlan) scan() ([]BSS, error) { return nil, nil }

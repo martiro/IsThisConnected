@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -75,7 +76,7 @@ func (a *App) serve() {
 			http.Error(w, "invalid range", 400)
 			return
 		}
-		res, err := a.store.Series(from, to)
+		res, err := a.store.Series(from, to, "")
 		writeJSON(w, res, err)
 	})
 	mux.HandleFunc("GET /api/incidents", func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +104,22 @@ func (a *App) serve() {
 			return
 		}
 		res, err := a.store.APSessions(from, to)
+		writeJSON(w, res, err)
+	})
+	mux.HandleFunc("GET /api/scan", func(w http.ResponseWriter, r *http.Request) {
+		from, to, ok := rangeParams(r)
+		if !ok {
+			http.Error(w, "invalid range", 400)
+			return
+		}
+		hist, err := a.store.Series(from, to, "scan/")
+		a.st.mu.Lock()
+		aps := make([]ScanAP, 0, len(a.st.Scan))
+		for _, x := range a.st.Scan {
+			aps = append(aps, x)
+		}
+		res := map[string]any{"aps": aps, "error": a.st.ScanErr, "interval_sec": a.cfg.ScanSec, "supported": runtime.GOOS == "windows", "history": hist}
+		a.st.mu.Unlock()
 		writeJSON(w, res, err)
 	})
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {

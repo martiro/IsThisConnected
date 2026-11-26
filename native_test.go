@@ -65,3 +65,29 @@ func TestNativeAPIs(t *testing.T) {
 	code, reason, found := lastDisconnectReason(30 * 24 * time.Hour)
 	t.Logf("last wlan event: %d %q found=%v", code, reason, found)
 }
+
+// Nearby AP scan: offsets of WLAN_BSS_ENTRY and the channel-width parser on real beacons.
+func TestNativeScan(t *testing.T) {
+	if testing.Short() {
+		t.Skip("native")
+	}
+	w, err := openWlan()
+	if err != nil {
+		t.Skipf("no WLAN: %v", err)
+	}
+	if wi, _ := w.info(); !wi.Present {
+		t.Skip("no WiFi adapter")
+	}
+	w.triggerScan()
+	time.Sleep(5 * time.Second)
+	aps, err := w.scan()
+	if err != nil {
+		t.Skipf("scan: %v", err) // e.g. location access off
+	}
+	for _, b := range aps {
+		t.Logf("%-17s %-24q %4.0f dBm ch %3d %-7s center %d MHz width %d", b.BSSID, b.SSID, b.RSSI, b.Channel, b.Band, b.CenterMHz, b.WidthMHz)
+		if b.RSSI > 0 || b.RSSI < -110 || b.Channel == 0 || b.WidthMHz < 20 || b.CenterMHz-b.WidthMHz/2 > 7200 {
+			t.Errorf("implausible entry %+v: offset wrong?", b)
+		}
+	}
+}

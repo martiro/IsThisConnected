@@ -92,10 +92,10 @@ async function load() {
     const [f, t] = currentRange();
     const q = `from=${f}&to=${t}`;
     const get = (u) => fetch(`${u}?${q}`).then((r) => r.json());
-    const [series, inc, ev, aps] = await Promise.all([get("/api/series"), get("/api/incidents"), get("/api/events"), get("/api/aps")]);
-    S.data = series; S.incidents = inc; S.events = ev; S.sessions = aps;
+    const [series, inc, ev, aps, scan] = await Promise.all([get("/api/series"), get("/api/incidents"), get("/api/events"), get("/api/aps"), get("/api/scan")]);
+    S.data = series; S.incidents = inc; S.events = ev; S.sessions = aps; NB.scan = scan;
     $("#rangeInfo").textContent = `${fmtTime(f)} → ${fmtTime(t)} · ${series.raw ? "per-second data" : "per-minute averages"}${series.step > 1000 ? ` (one point every ${fmtDur(series.step)})` : ""}`;
-    drawCharts(); renderIncidents(); renderSessions(); updateCfgInfo();
+    drawCharts(); renderIncidents(); renderSessions(); updateCfgInfo(); renderNearby();
   } catch (e) {
     $("#rangeInfo").textContent = "Error loading data: " + e.message;
   } finally { loading = false; }
@@ -322,6 +322,197 @@ function renderSessions() {
   }).join("");
 }
 
+// ---------- nearby access points: channels now and signal stability over time ----------
+const NB = { scan: null, band: "", pick: null, chart: null, sig: "", ssids: new Set() }; // pick: BSSIDs shown on the chart, null = the strongest
+try { NB.ssids = new Set(JSON.parse(localStorage.getItem("nb.ssids")) || []); } catch { /* storage blocked: no saved filter */ }
+const saveSsids = () => { try { localStorage.setItem("nb.ssids", JSON.stringify([...NB.ssids])); } catch { /* not remembered */ } };
+const NB_COLORS = ["#2563eb", "#d9480f", "#16a34a", "#7c3aed", "#0891b2", "#db2777", "#ca8a04", "#475569", "#dc2626", "#0d9488", "#9333ea", "#65a30d"];
+const nbColor = (bssid) => { let h = 0; for (const c of bssid) h = (h * 31 + c.charCodeAt(0)) | 0; return NB_COLORS[Math.abs(h) % NB_COLORS.length]; };
+const NB_BANDS = { // MHz shown, channel numbers on the axis
+  "2.4": { lo: 2400, hi: 2490, chans: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] },
+  "5": { lo: 5160, hi: 5900, chans: [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165, 169, 173, 177] },
+  "6": { lo: 5935, hi: 7135, chans: Array.from({ length: 59 }, (_, i) => 1 + 4 * i) },
+};
+const chanMHz = (band, ch) => band === "2.4" ? 2407 + 5 * ch : band === "5" ? 5000 + 5 * ch : 5950 + 5 * ch;
+const bandKey = (b) => String(b || "").replace(" GHz", "");
+const ssidOf = (s) => s || "(hidden network)";
+
+// access points of the band that pass the network filter (no network flagged = all)
+const nbVisible = (rows) => NB.ssids.size ? rows.filter((r) => NB.ssids.has(r.ssid)) : rows;
+
+// one row per access point of the band: live data from the last scans + statistics over the selected range
+function nbRows() {
+  const sc = NB.scan, h = sc.history, now = Date.now();
+  const fresh = Math.max(sc.interval_sec || 60, 30) * 2500; // missed about two scans = not heard now
+  const rows = new Map();
+  for (const [k, col] of Object.entries(h.series)) {
+    const p = k.split("/"), band = p[1], bssid = p[2], ssid = p.slice(3).join("/");
+    if (band !== NB.band) continue;
+    const v = col.filter((x) => x != null).sort((a, b) => a - b);
+    if (!v.length) continue;
+    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+    const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length);
+    rows.set(bssid, { bssid, ssid, key: k, med: v[Math.floor(v.length / 2)], min: v[0], max: v[v.length - 1], sd, n: v.length, heard: v.length / h.x.length });
+  }
+  for (const ap of sc.aps) {
+    if (bandKey(ap.band) !== NB.band) continue;
+    const r = rows.get(ap.bssid) || { bssid: ap.bssid, ssid: ap.ssid, n: 0 };
+    rows.set(ap.bssid, Object.assign(r, { ap, now: now - ap.seen < fresh ? ap.rssi : null }));
+  }
+  return [...rows.values()].sort((a, b) => (b.med ?? b.now ?? -200) - (a.med ?? a.now ?? -200));
+}
+
+function nbVerdict(r) {
+  if (r.n < 5) return ["", "too few scans yet"];
+  if (r.heard < 0.5) return ["bad", "heard only now and then"];
+  if (r.sd < 2) return ["good", "very stable"];
+  if (r.sd < 4) return ["good", "stable"];
+  if (r.sd < 7) return ["warn", "fluctuating"];
+  return ["bad", "unstable"];
+}
+const nbLevel = (v) => v == null ? "" : v >= -60 ? "good" : v >= -70 ? "" : v >= -80 ? "warn" : "bad"; // -60 good, -70 ok, -80 weak
+
+function renderNearby() {
+  const sc = NB.scan;
+  if (!sc) return;
+  const counts = {};
+  for (const ap of sc.aps) counts[bandKey(ap.band)] = (counts[bandKey(ap.band)] || 0) + 1;
+  for (const k of Object.keys(sc.history.series)) { const b = k.split("/")[1]; counts[b] = counts[b] || 0; }
+  if (!NB.band || !(NB.band in counts)) {
+    const mine = sc.aps.find((a) => a.bssid === S.bssid);
+    NB.band = mine ? bandKey(mine.band) : Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "2.4";
+  }
+  $("#nbBands").innerHTML = ["2.4", "5", "6"].map((b) => // not Object.keys: it puts "5", "6" before "2.4"
+    `<button type="button" data-band="${b}" aria-pressed="${b === NB.band}">${b} GHz <span class="muted">${counts[b] ?? 0}</span></button>`).join("");
+  $("#nbEvery").textContent = sc.interval_sec > 0 ? `${sc.interval_sec} s` : "minute (scans started by Windows only)";
+  $("#nbCount").textContent = `(${sc.aps.length} heard in the last 10 min)`;
+  const msg = !sc.supported ? "Scanning nearby access points is available on Windows only for now."
+    : /denied/i.test(sc.error) ? "Windows is blocking the WiFi scan. Turn on Settings › Privacy & security › Location › “Let desktop apps access your location”, then wait a minute."
+    : sc.error ? `WiFi scan failed: ${sc.error}` : !sc.aps.length && !sc.history.x.length ? "No scan yet: the first one runs within a minute of start-up." : "";
+  $("#nbMsg").hidden = !msg; $("#nbMsg").textContent = msg;
+
+  const all = nbRows(), nets = new Map(); // SSID -> access points on this band
+  for (const r of all) nets.set(r.ssid, (nets.get(r.ssid) || 0) + 1);
+  for (const s of NB.ssids) if (!nets.has(s)) nets.set(s, 0); // flagged but not on this band: keep it visible to unflag
+  const mySsid = all.find((r) => r.bssid === S.bssid)?.ssid;
+  $("#nbNets").innerHTML = `<span class="muted">Networks${NB.ssids.size ? ` (showing ${NB.ssids.size})` : " (click to show only some)"}:</span>` +
+    [...nets].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([s, n]) =>
+      `<button type="button" class="nb-net" data-ssid="${esc(s)}" aria-pressed="${NB.ssids.has(s)}">${s === mySsid ? "● " : ""}${esc(ssidOf(s))} <span class="muted">${n}</span></button>`).join("") +
+    (NB.ssids.size ? '<button type="button" class="nb-net-all">Show all</button>' : "");
+  const rows = nbVisible(all);
+  const def = new Set(rows.filter((r) => r.n).slice(0, 8).map((r) => r.bssid));
+  if (S.bssid) def.add(S.bssid);
+  const shown = NB.pick || def;
+  drawSpectrum(rows);
+  drawNbChart(rows.filter((r) => r.n && shown.has(r.bssid)));
+  $("#nbTable tbody").innerHTML = rows.map((r) => {
+    const [cls, verdict] = nbVerdict(r), ap = r.ap, c = nbColor(r.bssid);
+    return `<tr><td><button type="button" class="nb-pick" data-bssid="${esc(r.bssid)}" aria-pressed="${shown.has(r.bssid)}" ${r.n ? "" : "disabled"}
+        title="Show or hide on the chart"><i style="background:${c};border-color:${c}"></i><span>${esc(ssidOf(r.ssid))}<br><code>${esc(r.bssid)}</code></span></button>
+        ${r.bssid === S.bssid ? '<span class="badge ok">connected</span>' : ""}</td>
+      <td>${ap ? `${ap.channel} · ${ap.width_mhz} MHz` : "—"}</td>
+      <td class="${nbLevel(r.now)}">${r.now != null ? `${r.now} dBm` : '<span class="muted">not heard</span>'}</td>
+      <td class="${nbLevel(r.med)}">${r.n ? `${num(r.med)} dBm` : "—"}</td>
+      <td>${r.n ? `${num(r.min)} – ${num(r.max)} dBm` : "—"}</td>
+      <td>${r.n ? `± ${num(r.sd, 1)} dB` : "—"}</td>
+      <td class="${r.n >= 5 && r.heard < 0.5 ? "bad" : ""}">${r.n ? `${num(r.heard * 100)} %` : "—"}</td>
+      <td class="${cls}">${verdict}</td></tr>`;
+  }).join("") || `<tr class="static"><td colspan="8" class="muted">No access points ${NB.ssids.size ? "of the selected networks " : ""}heard on ${NB.band} GHz in the selected time range.</td></tr>`;
+}
+
+// the classic "parabolas" view: one curve per access point over the channels it occupies
+function drawSpectrum(rows) {
+  const cv = $("#nbSpectrum"), dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr);
+  const B = NB_BANDS[NB.band], L = 44, R = 10, T = 10, Bt = 26, lo = -100, hi = -20;
+  const x = (mhz) => L + (mhz - B.lo) / (B.hi - B.lo) * (W - L - R), y = (dbm) => T + (hi - dbm) / (hi - lo) * (H - T - Bt);
+  ctx.font = "11px system-ui, sans-serif"; ctx.lineWidth = 1;
+  ctx.fillStyle = css("--muted"); ctx.strokeStyle = css("--grid");
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let d = -90; d <= -30; d += 10) {
+    ctx.beginPath(); ctx.moveTo(L, y(d)); ctx.lineTo(W - R, y(d)); ctx.stroke();
+    ctx.fillText(String(d), L - 6, y(d));
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  let lastX = -1e9;
+  for (const ch of B.chans) {
+    const px = x(chanMHz(NB.band, ch));
+    if (px - lastX < 22) continue; // keep channel labels readable on narrow screens
+    ctx.fillText(String(ch), px, H - Bt + 6); lastX = px;
+  }
+  const aps = rows.filter((r) => r.now != null).sort((a, b) => a.now - b.now); // strongest drawn last, on top
+  const labels = [];
+  for (const r of aps) {
+    const ap = r.ap, c = nbColor(r.bssid), half = ap.width_mhz / 2, mine = r.bssid === S.bssid;
+    ctx.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 20 - 1;
+      ctx.lineTo(x(ap.center_mhz + t * half), y(ap.rssi - (ap.rssi - lo) * t * t));
+    }
+    ctx.fillStyle = c + (mine ? "40" : "1c"); ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = mine ? 3 : 1.5; ctx.stroke();
+    // label at the top of the curve, moved up while it overlaps an earlier one
+    ctx.font = (mine ? "600 " : "") + "11px system-ui, sans-serif";
+    const text = ssidOf(r.ssid), w = ctx.measureText(text).width + 4, lx = x(ap.center_mhz);
+    let ly = y(ap.rssi) - 14;
+    for (let k = 0; k < 6 && labels.some((b) => Math.abs(b.x - lx) < (b.w + w) / 2 && Math.abs(b.y - ly) < 12); k++) ly -= 12;
+    labels.push({ x: lx, y: ly, w });
+    ctx.fillStyle = c; ctx.fillText(text, lx, Math.max(0, ly));
+  }
+  cv.setAttribute("aria-label", `${aps.length} access points on ${NB.band} GHz: ` + aps.slice().reverse().map((r) => `${ssidOf(r.ssid)} channel ${r.ap.channel} ${r.now} dBm`).join(", "));
+}
+
+function drawNbChart(rows) {
+  const el = $("#nbChart"), h = NB.scan.history, [f, t] = currentRange();
+  const data = [h.x, ...rows.map((r) => h.series[r.key])];
+  const sig = NB.band + rows.map((r) => r.key).join();
+  if (NB.chart && NB.sig === sig) { NB.chart.setData(data, false); NB.chart.setScale("x", { min: f / 1000, max: t / 1000 }); return; }
+  NB.chart?.destroy(); NB.sig = sig;
+  const axisColor = css("--muted"), grid = css("--grid");
+  NB.chart = new uPlot({
+    width: el.clientWidth, height: 240,
+    cursor: { sync: { key: "wm" }, drag: { x: true, y: false, setScale: false } },
+    legend: { live: true },
+    scales: { x: { time: true, range: () => [currentRange()[0] / 1000, currentRange()[1] / 1000] },
+      dbm: { range: (u, mn, mx) => [Math.min(-90, Math.floor((mn ?? -90) / 10) * 10), Math.max(-30, Math.ceil((mx ?? -30) / 10) * 10)] } },
+    axes: [{ stroke: axisColor, grid: { stroke: grid }, ticks: { stroke: grid } },
+      { scale: "dbm", label: "dBm", stroke: axisColor, grid: { stroke: grid }, ticks: { stroke: grid }, size: 60 }],
+    series: [{ value: (u, v) => v == null ? "—" : fmtTime(v * 1000) }, ...rows.map((r) => ({
+      label: `${ssidOf(r.ssid)} ${r.bssid.slice(-5)}`, stroke: nbColor(r.bssid), scale: "dbm", width: r.bssid === S.bssid ? 2.5 : 1.5,
+      points: { size: 4 }, value: (u, v) => v == null ? "—" : `${v.toFixed(0)} dBm`,
+    }))],
+    hooks: { setSelect: [(u) => {
+      if (u.select.width < 5) return;
+      const a = u.posToVal(u.select.left, "x") * 1000, b = u.posToVal(u.select.left + u.select.width, "x") * 1000;
+      u.setSelect({ width: 0, height: 0 }, false);
+      setRange(a, b);
+    }] },
+  }, data, el);
+}
+
+$("#nbBands").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b) { NB.band = b.dataset.band; NB.pick = null; renderNearby(); }
+});
+$("#nbNets").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.classList.contains("nb-net-all")) NB.ssids.clear();
+  else NB.ssids.has(b.dataset.ssid) ? NB.ssids.delete(b.dataset.ssid) : NB.ssids.add(b.dataset.ssid);
+  saveSsids(); renderNearby();
+});
+$("#nbTable").addEventListener("click", (e) => {
+  const b = e.target.closest(".nb-pick");
+  if (!b) return;
+  if (!NB.pick) NB.pick = new Set([...document.querySelectorAll('#nbTable .nb-pick[aria-pressed="true"]')].map((x) => x.dataset.bssid));
+  NB.pick.has(b.dataset.bssid) ? NB.pick.delete(b.dataset.bssid) : NB.pick.add(b.dataset.bssid);
+  renderNearby();
+});
+new ResizeObserver(() => { if (NB.scan) { NB.chart?.setSize({ width: $("#nbChart").clientWidth, height: 240 }); drawSpectrum(nbVisible(nbRows())); } }).observe($("#nearby"));
+
 // ---------- settings ----------
 // threshold key, label, unit, what a good connection looks like, series to compare with, which incident triggers it owns
 const CFG = [
@@ -546,7 +737,7 @@ document.addEventListener("keydown", (e) => {
   const [f, t] = currentRange(), shift = (t - f) * 0.25 * (e.key === "ArrowLeft" ? -1 : 1);
   setRange(f + shift, t + shift);
 });
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { charts.forEach((c) => c.destroy()); charts = []; drawCharts(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { charts.forEach((c) => c.destroy()); charts = []; drawCharts(); NB.chart?.destroy(); NB.chart = null; renderNearby(); });
 
 const showError = (msg) => { $("#rangeInfo").textContent = "Error: " + msg; };
 window.addEventListener("error", (e) => showError(e.message));

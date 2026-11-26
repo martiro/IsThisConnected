@@ -169,8 +169,17 @@ type SeriesResult struct {
 	Step   int64                 `json:"step"`
 }
 
-// Series returns all series aligned on a common bucketed time axis.
-func (s *Store) Series(from, to int64) (*SeriesResult, error) {
+// Series returns the series whose key starts with prefix, aligned on a common bucketed time axis.
+// prefix "" = the dashboard metrics, without the per access point histories (ap/, scan/).
+func (s *Store) Series(from, to int64, prefix string) (*SeriesResult, error) {
+	want := map[int64]bool{}
+	s.mu.Lock()
+	for k, id := range s.sids {
+		if prefix == "" && !strings.HasPrefix(k, "ap/") && !strings.HasPrefix(k, "scan/") || prefix != "" && strings.HasPrefix(k, prefix) {
+			want[id] = true
+		}
+	}
+	s.mu.Unlock()
 	raw := useRaw(from, to, time.Now())
 	step := bucketStep(from, to, raw)
 	q := `SELECT sid, ts/?1*?1 AS b, avg(value) FROM samples WHERE ts BETWEEN ?2 AND ?3 GROUP BY sid, b`
@@ -191,7 +200,7 @@ func (s *Store) Series(from, to int64) (*SeriesResult, error) {
 	for rows.Next() {
 		var sid, b int64
 		var v float64
-		if rows.Scan(&sid, &b, &v) == nil {
+		if rows.Scan(&sid, &b, &v) == nil && want[sid] { // x axis only from wanted series: scan/ gets one point per scan
 			data[sid] = append(data[sid], pt{b, v})
 			buckets[b] = true
 		}
@@ -210,9 +219,6 @@ func (s *Store) Series(from, to int64) (*SeriesResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for sid, pts := range data {
-		if strings.HasPrefix(s.keys[sid], "ap/") { // per access point history: only for the AP table
-			continue
-		}
 		col := make([]*float64, len(xs))
 		for _, p := range pts {
 			v := p.v

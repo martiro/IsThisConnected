@@ -46,3 +46,27 @@ func TestPlatformBasics(t *testing.T) {
 	hop, _, _ := c.echo(net.ParseIP("8.8.8.8"), 1, 1000)
 	t.Logf("first hop toward 8.8.8.8: %v", hop)
 }
+
+func TestChanWidth(t *testing.T) {
+	ht := func(sec byte) []byte {
+		return []byte{61, 22, 36, 0x04 | sec, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	}
+	for _, c := range []struct {
+		name         string
+		ies          []byte
+		primary      int
+		center, wide int
+	}{
+		{"no IEs", nil, 2437, 2437, 20},
+		{"HT40 above", ht(1), 2412, 2422, 40},
+		{"HT40 below", ht(3), 5200, 5190, 40},
+		{"VHT80 ch36-48", append(ht(1), 192, 5, 1, 42, 0, 0, 0), 5180, 5210, 80},
+		{"VHT160 ch36-64", append(ht(1), 192, 5, 1, 42, 50, 0, 0), 5180, 5250, 160},
+		{"HE 6 GHz 160", []byte{255, 12, 36, 0, 0, 0x02, 0, 0, 0, 37, 3, 39, 47, 0}, 6135, 6185, 160}, // CCFS0 = primary 80 block, CCFS1 = 160 block
+		{"truncated", []byte{61, 22, 36}, 2412, 2412, 20},
+	} {
+		if cc, w := chanWidth(c.ies, c.primary); cc != c.center || w != c.wide {
+			t.Errorf("%s: got %d MHz wide %d, want %d wide %d", c.name, cc, w, c.center, c.wide)
+		}
+	}
+}
