@@ -82,7 +82,7 @@ drivers. It is only used to confirm a slow router.
   - synchronised charts with incidents drawn as coloured bands;
   - CSV export.
 - **Access point comparison**: every connection to every access point with date and time, how long it lasted, the router ping during it, the WiFi incidents, and where the PC went next. It reveals a bad access point, or *ping-pong roaming* between two of them.
-- **Nearby access points** (Windows): a WiFi scan every 60 s lists every access point the PC can hear. A channel view per band (2.4 / 5 / 6 GHz) draws each one as a curve as wide as its channel (20 to 160 MHz) and as high as its signal, so crowded channels stand out. A chart shows each signal over time, and a table rates its stability over the selected range: typical signal, weakest to strongest, variation (± dB), and how often it was heard.
+- **Nearby access points** (Windows): a WiFi scan every 60 s lists every access point the PC can hear. A channel view per band (2.4 / 5 / 6 GHz) draws each one as a curve as wide as its channel (20 to 160 MHz) and as high as its signal, so crowded channels stand out. A chart shows each signal over time, and a table rates its stability over the selected range: typical signal, weakest to strongest, variation (± dB), and how often it was heard. A network filter on top keeps only the networks you care about in all three.
 - **Threshold tuning that shows its effect**: the ⚙ Settings panel shows, for each threshold:
   - the range of a good connection;
   - your own typical values;
@@ -104,6 +104,39 @@ drivers. It is only used to confirm a slow router.
 
 ![Access point connections](docs/screenshots/access-points.png)
 
+### Nearby access points: channels and signal stability
+
+The *Nearby access points* section, at the bottom of the dashboard, shows every access point the PC can hear,
+not only the one it is connected to. It answers two questions: *is my channel crowded?* and *is the signal steady?*
+
+![Nearby access points: channel view, signal over time and stability table](docs/screenshots/nearby-access-points.png)
+
+- **Band and networks**: pick the band (2.4, 5 or 6 GHz; the number is how many access points were heard there),
+  then click the networks you want to see. With no network selected, all of them are shown; with some selected,
+  every view below shows only those. The network you are connected to is marked with ●, and the choice is remembered
+  in your browser. *Show all* clears it.
+- **Channels now**: the classic channel view. Each access point is a curve centred on the channels it occupies, as
+  wide as its channel (20, 40, 80 or 160 MHz) and as high as its signal. Your access point is drawn thicker. Curves
+  that overlap share the same airtime and slow each other down, so a channel with fewer and weaker curves is a better
+  choice for your router.
+- **Signal over time**: each access point's signal over the selected time range, on the same time axis as the other
+  charts (drag to zoom works here too). A gap means the access point was not heard in that scan. To keep the chart
+  readable it starts with the 8 strongest plus the one you are connected to; the buttons in the table add or remove one.
+- **Stability table**, over the selected time range:
+
+  | Column | Meaning |
+  |---|---|
+  | Now | signal in the last scan, or *not heard* if it was missed in the last two scans |
+  | Typical | median signal; green from −60 dBm, amber below −70, red below −80 |
+  | Weakest – strongest | the range it moved in |
+  | Variation | standard deviation, in dB |
+  | Heard | share of scans that picked it up |
+  | Stability | *very stable* (under 2 dB), *stable* (under 4), *fluctuating* (under 7), *unstable*; *heard only now and then* if heard in less than half of the scans |
+
+  A healthy, nearby access point moves only a few dB. Large swings or frequent gaps mean it is far away, behind
+  walls, or that it changes its power or channel. Per-second data is kept for 7 days; over longer ranges the
+  table works on per-minute averages, which make the variation look smaller.
+
 ### Settings: find the false alarms
 
 ![Settings panel](docs/screenshots/settings.png)
@@ -120,6 +153,7 @@ drivers. It is only used to confirm a slow router.
 | Adapter traffic, CPU load | ✅ | ✅ | ✅ |
 | WiFi signal, link speed, channel, band | ✅ | ✅ (nl80211) | ✅ (CoreWLAN, transmit rate only) |
 | Network name and access point (BSSID): AP comparison, roaming | ✅ | ✅ | ❌ hidden by macOS ² |
+| Nearby access points: channels, signal stability | ✅ ⁵ | ❌ | ❌ |
 | Why the WiFi dropped (OS disconnect reason) | ✅ | ⚠️ with wpa_supplicant ³ | ❌ |
 | Metered connection detection | ✅ | ✅ (NetworkManager) | ❌ |
 | Tray icon | ✅ | ⚠️ needs a StatusNotifier/AppIndicator tray ⁴ | ✅ |
@@ -136,6 +170,8 @@ true for the first user on most desktops. Not available with iwd.
 ⁴ KDE, Xfce, Cinnamon and others have one; on GNOME install the *AppIndicator and KStatusNotifierItem* extension.
 The icon is drawn for a dark panel (the common default), because there is no standard way to ask the desktop
 for its panel color. The dashboard works either way.
+⁵ Windows 11 only allows it with *Settings › Privacy & security › Location › Let desktop apps access your location*
+turned on; the dashboard tells you when Windows blocks the scan.
 
 > [!WARNING]
 > **Linux and macOS support is experimental and has not been tested on a real WiFi connection yet.**
@@ -221,7 +257,10 @@ in the data folder (see below). That file also holds the options that need a res
   - ICMP pings to your router, your ISP's first hop, `8.8.8.8` and `1.1.1.1`;
   - DNS lookups of random names under `example.com`;
   - a TCP connection to `1.1.1.1:443`;
-  - a light traceroute every 10 minutes.
+  - a light traceroute every 10 minutes;
+  - a WiFi scan every 60 s (Windows). It only listens to what access points broadcast, but it does store the names
+    (SSID), hardware addresses (BSSID) and signal of your neighbours' networks in the local database, and they appear
+    in the CSV export as `scan/<band>/<bssid>/<network>`.
 - The download test fetches **10 MB from `speed.cloudflare.com` every 15 minutes, about 1 GB per day**. It is skipped on metered connections and while you are already using the network heavily. You can change the interval in `config.json`.
 
 ## Building from source
